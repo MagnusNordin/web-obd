@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>C30 OBD</title>
+  <link rel="stylesheet" href="app.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <h1>C30 <span>OBD</span></h1>
+    <span id="status" class="pill">Not connected</span>
+  </header>
+
+  <main>
+    <section id="connect" class="card">
+      <h2>Connect</h2>
+      <p class="hint">Plug the vLinker into the OBD port under the dashboard on the driver's side. Turn the ignition to position II, or start the engine.</p>
+      <div class="row">
+        <button id="btn-ble" class="primary" type="button">Bluetooth</button>
+        <button id="btn-serial" type="button">USB / serial port</button>
+        <button id="btn-demo" type="button">Demo (no car)</button>
+      </div>
+      <label id="baud-row" class="hint">Serial speed
+        <select id="baud">
+          <option>9600</option>
+          <option selected>38400</option>
+          <option>115200</option>
+          <option>500000</option>
+        </select>
+      </label>
+      <p id="support" class="hint"></p>
+      <ol id="steps" class="steps"></ol>
+      <p id="error" class="error" role="alert" hidden></p>
+      <button id="btn-disconnect" type="button" hidden>Disconnect</button>
+    </section>
+
+    <section id="vehicle" class="card" hidden>
+      <h2>Vehicle</h2>
+      <dl class="facts">
+        <dt>VIN</dt><dd id="vin">–</dd>
+        <dt>Protocol</dt><dd id="protocol">–</dd>
+        <dt>Adapter</dt><dd id="adapter">–</dd>
+        <dt>Battery</dt><dd id="battery">–</dd>
+      </dl>
+    </section>
+
+    <section id="faults" class="card" hidden>
+      <h2>Fault codes</h2>
+      <div id="mil" class="mil"></div>
+      <div class="row">
+        <button id="btn-read" class="primary" type="button">Read codes</button>
+        <button id="btn-clear" class="danger" type="button">Clear codes…</button>
+      </div>
+      <ul id="dtc-list" class="dtcs"></ul>
+    </section>
+
+    <section id="readiness" class="card" hidden>
+      <h2>Readiness monitors</h2>
+      <p class="hint">Emissions self-tests the car runs while driving. Inspection needs them complete.</p>
+      <ul id="ready-list" class="ready"></ul>
+    </section>
+
+    <section id="live" class="card" hidden>
+      <h2>Live data</h2>
+      <div class="row">
+        <button id="btn-live" class="primary" type="button">Start</button>
+        <button id="btn-rec" type="button" disabled>Record CSV</button>
+        <span id="rate" class="hint"></span>
+      </div>
+      <div id="gauges" class="gauges"></div>
+    </section>
+
+    <section id="console" class="card" hidden>
+      <details>
+        <summary>Adapter console</summary>
+        <p class="hint">Send raw ELM327/OBD commands, e.g. <code>ATRV</code> or <code>010C</code>. The log shows all traffic.</p>
+        <form id="term" class="row">
+          <input id="term-in" autocomplete="off" spellcheck="false" placeholder="Command" aria-label="Command">
+          <button type="submit">Send</button>
+        </form>
+        <pre id="log" class="log"></pre>
+      </details>
+    </section>
+  </main>
+
+  <dialog id="confirm-clear">
+    <form method="dialog">
+      <h2>Clear fault codes?</h2>
+      <p>This switches off the check-engine light and erases the codes and the freeze-frame data stored with them. It also resets every readiness monitor. The car won't pass an emissions inspection until it has been driven enough for them to complete again.</p>
+      <p>If the fault is still there, the code comes back. Write the codes down first.</p>
+      <p class="hint">Engine off, ignition on.</p>
+      <div class="row">
+        <button value="cancel" class="primary">Cancel</button>
+        <button value="clear" class="danger">Clear codes</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>

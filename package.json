@@ -1,0 +1,11 @@
+{
+  "name": "web-obd",
+  "private": true,
+  "type": "module",
+  "description": "Browser OBD-II reader for ELM327 adapters (vLinker FD+): fault codes, readiness and live engine data.",
+  "scripts": {
+    "test": "node --test 'tests/*.test.mjs'",
+    "serve": "node scripts/serve.mjs"
+  },
+  "engines": { "node": ">=22" }
+}

@@ -149,7 +149,7 @@ export class ObdClient {
 
     step('Reading supported data');
     this.supported = decodeSupported(pidReply(parseMessages(check.lines, this.protocol), 0x00), 0x00);
-    for (const base of [0x20, 0x40]) {
+    for (const base of [0x20, 0x40, 0x60, 0x80]) {
       if (!this.supported.includes(base)) break;
       const reply = await this.query(`01${base.toString(16).padStart(2, '0')}`);
       this.supported.push(...decodeSupported(pidReply(reply.messages, base), base));

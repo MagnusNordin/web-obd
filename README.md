@@ -1,18 +1,23 @@
 # Web OBD
 
-A browser OBD-II reader for ELM327-compatible adapters, made for a vLinker FD+
-in a Volvo C30. No app to install: open the page, pair the adapter, read the car.
+A browser OBD-II reader for ELM327-compatible adapters such as the vLinker FD+.
+Works with any car that has OBD-II/EOBD (in the EU: petrol from 2001, diesel
+from about 2004). No app to install: open the page, pair the adapter, read the car.
 
 - **Fault codes**: stored, pending and permanent, per control unit (engine,
   gearbox), with descriptions for common generic codes. Clear them after a
   confirmation.
 - **Check-engine light and readiness monitors**: what an emissions inspection
   looks at. Diesel cars get the diesel monitor list (DPF and so on).
-- **Vehicle info**: VIN, protocol, adapter version, battery voltage.
+- **Vehicle info**: VIN (with the make read from it), protocol, adapter version,
+  battery voltage. Fault-code search links include the make.
 - **Live data**: RPM, speed, temperatures, load, throttle, boost, MAF, fuel
-  trims and more, whatever the car supports. Record to CSV.
+  trims and more, whatever the car supports. Diesels also get boost pressure,
+  DPF pressure difference (rises as the filter fills with soot), exhaust
+  temperature, AdBlue level, fuel rate, rail pressure, torque and EGR. Record
+  to CSV.
 - **Adapter console**: send raw ELM327/OBD commands and see all traffic.
-- **Demo mode**: add `?demo` to the URL for a simulated car.
+- **Demo mode**: `?demo` for a simulated petrol car, `?demo=diesel` for a diesel.
 
 ## Browsers
 
@@ -20,9 +25,10 @@ Uses Web Bluetooth (and Web Serial for USB or paired serial ports), so it needs
 Chrome or Edge on Android, Windows, macOS or ChromeOS, over HTTPS or
 localhost. On iPhone use the Bluefy browser; Safari has no Web Bluetooth.
 
-Only standard OBD-II is supported (engine and gearbox). Volvo-specific modules
-(SRS, ABS, CEM, DIM) use Volvo's own protocol on the medium-speed CAN bus and
-need a tool such as vDash.
+Only standard OBD-II is supported (engine and gearbox). Make-specific modules
+(airbag, ABS, body electronics, instrument cluster), service resets, battery
+registration and forced DPF regeneration use each maker's own protocol and need
+a tool for that make, such as vDash for older Volvos or BimmerLink for BMW.
 
 ## Run it locally
 
@@ -36,9 +42,9 @@ dependencies.
 
 | File | Does |
 |---|---|
-| `site/obd.js` | Decodes ELM327 replies: ISO-TP reassembly, DTCs, PIDs, VIN, readiness |
+| `site/obd.js` | Decodes ELM327 replies: ISO-TP reassembly, DTCs, PIDs, VIN and make, readiness |
 | `site/elm.js` | Bluetooth/serial transports, command queue, OBD client |
-| `site/sim.js` | Simulated car for the demo and the tests |
+| `site/sim.js` | Simulated petrol and diesel cars for the demo and the tests |
 | `site/dtc-codes.js` | Fault code descriptions |
 | `site/app.js` | The UI |
 

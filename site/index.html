@@ -4,24 +4,25 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark light">
-  <title>C30 OBD</title>
+  <title>Web OBD</title>
   <link rel="stylesheet" href="app.css">
   <script type="module" src="app.js"></script>
 </head>
 <body>
   <header class="top">
-    <h1>C30 <span>OBD</span></h1>
+    <h1>Web <span>OBD</span></h1>
     <span id="status" class="pill">Not connected</span>
   </header>
 
   <main>
     <section id="connect" class="card">
       <h2>Connect</h2>
-      <p class="hint">Plug the vLinker into the OBD port under the dashboard on the driver's side. Turn the ignition to position II, or start the engine.</p>
+      <p class="hint">Plug the adapter into the car's OBD port, usually under the dashboard on the driver's side. Switch the ignition on (engine off is fine), or start the engine.</p>
       <div class="row">
         <button id="btn-ble" class="primary" type="button">Bluetooth</button>
         <button id="btn-serial" type="button">USB / serial port</button>
-        <button id="btn-demo" type="button">Demo (no car)</button>
+        <button id="btn-demo" type="button">Demo: petrol</button>
+        <button id="btn-demo-diesel" type="button">Demo: diesel</button>
       </div>
       <label id="baud-row" class="hint">Serial speed
         <select id="baud">

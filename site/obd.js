@@ -183,6 +183,7 @@ export function decodeStatus(bytes) {
 }
 
 const u16 = ([a, b]) => a * 256 + b;
+const s16 = (x) => { const v = u16(x); return v >= 0x8000 ? v - 0x10000 : v; };
 
 // Live-data PIDs: what the app polls when the car supports them.
 export const PIDS = {
@@ -203,7 +204,77 @@ export const PIDS = {
   0x46: { name: 'Ambient temp', unit: '°C', min: -40, max: 50, digits: 0, decode: ([a]) => a - 40 },
   0x33: { name: 'Barometric pressure', unit: 'kPa', min: 60, max: 110, digits: 0, decode: ([a]) => a },
   0x23: { name: 'Fuel rail pressure', unit: 'bar', min: 0, max: 2000, digits: 0, decode: (x) => (u16(x) * 10) / 100 },
-  0x1f: { name: 'Run time since start', unit: 's', min: 0, max: 3600, digits: 0, decode: (x) => u16(x) }
+  0x1f: { name: 'Run time since start', unit: 's', min: 0, max: 3600, digits: 0, decode: (x) => u16(x) },
+  // Common on diesels (and many newer petrol cars).
+  0x49: { name: 'Accelerator pedal', unit: '%', min: 0, max: 100, digits: 0, decode: ([a]) => (a * 100) / 255 },
+  0x62: { name: 'Engine torque', unit: '%', min: 0, max: 100, digits: 0, decode: ([a]) => a - 125 },
+  0x5e: { name: 'Fuel rate', unit: 'L/h', min: 0, max: 30, digits: 1, decode: (x) => u16(x) / 20 },
+  0x59: { name: 'Fuel rail pressure', unit: 'bar', min: 0, max: 2500, digits: 0, decode: (x) => u16(x) / 10 },
+  0x70: {
+    name: 'Boost pressure (abs.)', unit: 'bar', min: 0.8, max: 3, digits: 2,
+    // A: which values exist; B-C commanded, D-E actual (1/32 kPa).
+    decode: ([a, b, c, d, e]) => (a & 0x02 ? u16([d, e]) : a & 0x01 ? u16([b, c]) : NaN) / 32 / 100
+  },
+  0x2c: { name: 'EGR commanded', unit: '%', min: 0, max: 100, digits: 0, decode: ([a]) => (a * 100) / 255 },
+  0x78: {
+    name: 'Exhaust temp (EGT)', unit: '°C', min: 0, max: 900, digits: 0,
+    // A: which of 4 sensors exist; then 2 bytes each (0.1 °C, offset -40). First one present.
+    decode: (x) => firstSensor(x, (v) => v / 10 - 40)
+  },
+  0x7a: {
+    name: 'DPF pressure difference', unit: 'kPa', min: 0, max: 30, digits: 2,
+    // A: bit 0 = delta pressure present; B-C signed, 0.01 kPa. Rises as the filter fills with soot.
+    decode: ([a, b, c]) => (a & 0x01 ? s16([b, c]) / 100 : NaN)
+  },
+  0x85: {
+    name: 'AdBlue level', unit: '%', min: 0, max: 100, digits: 0,
+    // A: bit 2 = tank level present; F = level (100/255 %).
+    decode: (x) => (x[0] & 0x04 ? (x[5] * 100) / 255 : NaN)
+  }
 };
+
+// Order of the live-data tiles (object keys would sort numerically).
+export const PID_ORDER = [
+  0x0c, 0x0d, 0x05, 0x70, 0x0b, 0x7a, 0x78, 0x85, 0x5e, 0x04, 0x62, 0x49, 0x11, 0x10,
+  0x59, 0x23, 0x2c, 0x06, 0x07, 0x0e, 0x0f, 0x5c, 0x2f, 0x42, 0x46, 0x33, 0x1f
+];
+
+// Multi-sensor PIDs: support bits in the first byte, then 16-bit values.
+function firstSensor(x, scale) {
+  for (let i = 0; i < 4; i++) {
+    if (x[0] & (1 << i) && x.length >= 3 + 2 * i) return scale(u16([x[1 + 2 * i], x[2 + 2 * i]]));
+  }
+  return NaN;
+}
+
+// A decoded value, or null when the car sent too little or says it has none.
+export function decodePid(pid, bytes) {
+  if (!PIDS[pid] || !bytes || bytes.length === 0) return null;
+  const v = PIDS[pid].decode(bytes);
+  return Number.isFinite(v) ? v : null;
+}
+
+// Car maker from the first characters of the VIN (the WMI).
+const MAKERS = [
+  ['YV', 'Volvo'], ['WBA', 'BMW'], ['WBS', 'BMW'], ['WBY', 'BMW'], ['WMW', 'MINI'],
+  ['WVW', 'Volkswagen'], ['WVG', 'Volkswagen'], ['WV1', 'Volkswagen'], ['WV2', 'Volkswagen'],
+  ['WAU', 'Audi'], ['WUA', 'Audi'], ['TRU', 'Audi'], ['TMB', 'Skoda'], ['VSS', 'SEAT'],
+  ['WDD', 'Mercedes-Benz'], ['WDB', 'Mercedes-Benz'], ['WDC', 'Mercedes-Benz'], ['W1K', 'Mercedes-Benz'],
+  ['W1N', 'Mercedes-Benz'], ['W1V', 'Mercedes-Benz'], ['WP0', 'Porsche'], ['WP1', 'Porsche'],
+  ['W0L', 'Opel'], ['W0V', 'Opel'], ['WF0', 'Ford'], ['1F', 'Ford'], ['3F', 'Ford'], ['YS3', 'Saab'],
+  ['VF1', 'Renault'], ['VF3', 'Peugeot'], ['VR3', 'Peugeot'], ['VF7', 'Citroen'], ['ZFA', 'Fiat'],
+  ['ZAR', 'Alfa Romeo'], ['SAL', 'Land Rover'], ['SAJ', 'Jaguar'], ['JT', 'Toyota'], ['SB1', 'Toyota'],
+  ['NMT', 'Toyota'], ['VNK', 'Toyota'], ['JN', 'Nissan'], ['SJN', 'Nissan'], ['VSK', 'Nissan'],
+  ['JH', 'Honda'], ['SHH', 'Honda'], ['JM', 'Mazda'], ['JS', 'Suzuki'], ['KMH', 'Hyundai'],
+  ['TMA', 'Hyundai'], ['KNA', 'Kia'], ['KNE', 'Kia'], ['U5Y', 'Kia'], ['JF', 'Subaru'], ['JMB', 'Mitsubishi'],
+  ['UU1', 'Dacia'], ['WME', 'smart'], ['VSE', 'Suzuki'], ['5YJ', 'Tesla'], ['LRW', 'Tesla']
+];
+
+export function vinMake(vin) {
+  if (!vin) return null;
+  const v = vin.toUpperCase();
+  const hit = MAKERS.filter(([wmi]) => v.startsWith(wmi)).sort((a, b) => b[0].length - a[0].length)[0];
+  return hit ? hit[1] : null;
+}
 
 export const hex2 = (n) => n.toString(16).toUpperCase().padStart(2, '0');

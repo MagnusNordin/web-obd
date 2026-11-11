@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   cleanResponse, parseProtocol, parseMessages, dtcCode, decodeDtcs, decodeSupported,
-  decodeVin, decodeStatus, pidReply, ecuName, PIDS
+  decodeVin, decodeStatus, pidReply, ecuName, PIDS, PID_ORDER, decodePid, vinMake
 } from '../site/obd.js';
 import { describeDtc } from '../site/dtc-codes.js';
 import { Elm327, ObdClient } from '../site/elm.js';
@@ -83,4 +83,47 @@ test('client against the simulated car: init, VIN, codes, clear, live data', asy
   assert.ok(rpm >= 800 && rpm <= 3400, `rpm ${rpm}`);
   assert.equal(await obd.readPid(0x5c), null); // unsupported → NO DATA
   assert.ok(traffic.includes('ATSP0'));
+});
+
+test('diesel PIDs decode, and report null when the car has no such sensor', () => {
+  assert.equal(decodePid(0x70, [0x02, 0, 0, 0x1f, 0x40, 0, 0, 0, 0, 0]), 2.5); // 8000/32 kPa = 2.5 bar
+  assert.equal(decodePid(0x70, [0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0]), null);
+  assert.equal(decodePid(0x7a, [0x01, 0x01, 0xf4, 0, 0, 0, 0]), 5);
+  assert.equal(decodePid(0x7a, [0x01, 0xff, 0x9c, 0, 0, 0, 0]), -1); // signed
+  assert.equal(decodePid(0x78, [0x02, 0, 0, 0x16, 0xa8, 0, 0, 0, 0]), 540); // sensor 2 only
+  assert.equal(decodePid(0x85, [0x04, 0, 0, 0, 0, 0x80, 0, 0, 0, 0]).toFixed(1), '50.2');
+  assert.equal(decodePid(0x59, [0x2e, 0xe0]), 1200);
+  assert.equal(decodePid(0x5e, [0x00, 0xc8]), 10);
+  assert.equal(decodePid(0x62, [0xaf]), 50);
+  assert.equal(decodePid(0x0c, []), null);
+  assert.equal(decodePid(0x99, [1]), null);
+});
+
+test('vinMake reads the maker from the VIN', () => {
+  assert.equal(vinMake('WBA2C000000DEMO01'), 'BMW');
+  assert.equal(vinMake('YV1MK0000DEMO0001'), 'Volvo');
+  assert.equal(vinMake('WMWXM510X02A00000'), 'MINI');
+  assert.equal(vinMake('XXX00000000000000'), null);
+  assert.equal(vinMake(null), null);
+});
+
+test('diesel demo car: supported ranges up to 0x85, diesel monitors, DPF code, live values', async () => {
+  const obd = new ObdClient(new Elm327(new SimTransport({ engine: 'diesel', latency: 1 })));
+  await obd.init();
+  for (const pid of [0x59, 0x5e, 0x62, 0x70, 0x78, 0x7a, 0x85]) assert.ok(obd.supported.includes(pid), `0x${pid.toString(16)}`);
+  assert.equal(vinMake(await obd.vin()), 'BMW');
+  const status = await obd.status();
+  assert.equal(status.diesel, true);
+  assert.equal(status.tests.find((t) => t.name === 'Particulate filter (DPF)').complete, false);
+  assert.deepEqual((await obd.dtcs()).map((d) => `${d.code}/${d.kind}`), ['P2463/stored', 'P0401/pending']);
+  const boost = decodePid(0x70, await obd.readPid(0x70));
+  assert.ok(boost > 0.9 && boost < 2.6, `boost ${boost}`);
+  const egt = decodePid(0x78, await obd.readPid(0x78));
+  assert.ok(egt >= 250 && egt <= 560, `egt ${egt}`);
+  assert.ok(decodePid(0x7a, await obd.readPid(0x7a)) > 0);
+  assert.equal(Math.round(decodePid(0x85, await obd.readPid(0x85))), 48);
+});
+
+test('every live PID has a place in the tile order, once', () => {
+  assert.deepEqual([...PID_ORDER].sort((a, b) => a - b), Object.keys(PIDS).map(Number).sort((a, b) => a - b));
 });

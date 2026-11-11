@@ -2,7 +2,7 @@
 
 import { Elm327, ObdClient, connectBluetooth, connectSerial } from './elm.js';
 import { SimTransport } from './sim.js';
-import { PIDS, ecuName } from './obd.js';
+import { PIDS, PID_ORDER, ecuName, decodePid, vinMake } from './obd.js';
 import { describeDtc } from './dtc-codes.js';
 
 const $ = (id) => document.getElementById(id);
@@ -17,6 +17,7 @@ let transport = null;
 let obd = null;
 let live = false;
 let recording = null;
+let make = null;
 const unsupported = new Set();
 
 function setStatus(text, kind = '') {
@@ -44,10 +45,10 @@ function step(text) {
 }
 
 function setBusy(busy) {
-  for (const id of ['btn-ble', 'btn-serial', 'btn-demo']) $(id).disabled = busy || Boolean(obd) || unsupported.has(id);
+  for (const id of ['btn-ble', 'btn-serial', 'btn-demo', 'btn-demo-diesel']) $(id).disabled = busy || Boolean(obd) || unsupported.has(id);
 }
 
-async function connect(kind) {
+async function connect(kind, demo = 'petrol') {
   showError(null);
   $('steps').replaceChildren();
   setBusy(true);
@@ -55,7 +56,7 @@ async function connect(kind) {
   try {
     if (kind === 'ble') transport = await connectBluetooth(onLost);
     else if (kind === 'serial') transport = await connectSerial(Number($('baud').value), onLost);
-    else transport = new SimTransport();
+    else transport = new SimTransport({ engine: demo });
     step(`Connected to ${transport.name}`);
     const client = new ObdClient(new Elm327(transport, log));
     const info = await client.init(step);
@@ -88,6 +89,7 @@ function onLost() {
 async function disconnect() {
   live = false;
   obd = null;
+  make = null;
   const t = transport;
   transport = null;
   try { await t?.close(); } catch { /* already gone */ }
@@ -100,7 +102,9 @@ async function disconnect() {
 }
 
 async function refreshVehicle() {
-  $('vin').textContent = (await obd.vin().catch(() => null)) || 'Not reported';
+  const vin = await obd.vin().catch(() => null);
+  make = vinMake(vin);
+  $('vin').textContent = vin ? `${vin}${make ? ` (${make})` : ''}` : 'Not reported';
   await refreshBattery();
 }
 
@@ -147,7 +151,7 @@ function renderCodes(codes) {
     const desc = describeDtc(d.code);
     const text = el('div', 'dtc-text', desc.text);
     const a = el('a', '', desc.known ? 'Search' : 'Look up');
-    a.href = `https://www.google.com/search?q=${encodeURIComponent(`Volvo C30 ${d.code}`)}`;
+    a.href = `https://www.google.com/search?q=${encodeURIComponent(`${make ? `${make} ` : ''}${d.code}`)}`;
     a.target = '_blank';
     a.rel = 'noopener';
     text.append(a);
@@ -181,7 +185,7 @@ async function clearCodes() {
 }
 
 function livePids() {
-  return Object.keys(PIDS).map(Number).filter((pid) => obd?.supported.includes(pid));
+  return PID_ORDER.filter((pid) => obd?.supported.includes(pid));
 }
 
 function buildGauges() {
@@ -228,7 +232,7 @@ async function toggleLive() {
       if (!live || !obd) break;
       try {
         const bytes = await obd.readPid(pid);
-        const v = bytes && bytes.length ? PIDS[pid].decode(bytes) : null;
+        const v = decodePid(pid, bytes);
         showValue(pid, v);
         row[pid] = v;
         count++;
@@ -305,7 +309,8 @@ function checkSupport() {
 
 $('btn-ble').addEventListener('click', () => connect('ble'));
 $('btn-serial').addEventListener('click', () => connect('serial'));
-$('btn-demo').addEventListener('click', () => connect('demo'));
+$('btn-demo').addEventListener('click', () => connect('demo', 'petrol'));
+$('btn-demo-diesel').addEventListener('click', () => connect('demo', 'diesel'));
 $('btn-disconnect').addEventListener('click', disconnect);
 $('btn-read').addEventListener('click', readCodes);
 $('btn-clear').addEventListener('click', clearCodes);
@@ -313,4 +318,5 @@ $('btn-live').addEventListener('click', toggleLive);
 $('btn-rec').addEventListener('click', toggleRecording);
 $('term').addEventListener('submit', sendRaw);
 checkSupport();
-if (new URLSearchParams(location.search).has('demo')) connect('demo');
+const demoParam = new URLSearchParams(location.search).get('demo');
+if (demoParam !== null) connect('demo', demoParam === 'diesel' ? 'diesel' : 'petrol');

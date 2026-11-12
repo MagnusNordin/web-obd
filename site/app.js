@@ -4,6 +4,7 @@ import { Elm327, ObdClient, connectBluetooth, connectSerial, describeError, SEAR
 import { SimTransport } from './sim.js';
 import { PIDS, PID_ORDER, ecuName, decodePid, vinMake } from './obd.js';
 import { describeDtc } from './dtc-codes.js';
+import { History, drawSparkline, drawChart, attachCrosshair } from './chart.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => {
@@ -20,6 +21,12 @@ let recording = null;
 let make = null;
 // After a failed device search, the next press tries the next way of asking.
 let bleMode = 0;
+const history = new History();
+const SPARK_MS = 60000;
+let chartPid = null;
+let chartWindow = 60000;
+let chartState = null;
+let lastSample = 0;
 const unsupported = new Set();
 
 function setStatus(text, kind = '') {
@@ -98,6 +105,8 @@ async function disconnect() {
   live = false;
   obd = null;
   make = null;
+  history.clear();
+  openChart(null);
   const t = transport;
   transport = null;
   try { await t?.close(); } catch { /* already gone */ }
@@ -200,13 +209,17 @@ function buildGauges() {
   const pids = livePids();
   $('gauges').replaceChildren(...pids.map((pid) => {
     const def = PIDS[pid];
-    const g = el('div', 'gauge stale');
+    const g = el('button', 'gauge stale');
+    g.type = 'button';
     g.dataset.pid = pid;
+    g.setAttribute('aria-pressed', 'false');
     const value = el('div', 'value', '–');
     value.append(el('span', 'unit', def.unit));
-    const bar = el('div', 'bar');
-    bar.append(el('i'));
-    g.append(el('div', 'label', def.name), value, bar);
+    const spark = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    spark.classList.add('spark');
+    spark.setAttribute('aria-hidden', 'true');
+    g.append(el('div', 'label', def.name), value, spark);
+    g.addEventListener('click', () => openChart(chartPid === pid ? null : pid));
     return g;
   }));
   if (pids.length === 0) $('gauges').replaceChildren(el('p', 'hint', 'The car reported no live data the app knows.'));
@@ -218,9 +231,49 @@ function showValue(pid, v) {
   const def = PIDS[pid];
   g.classList.toggle('stale', v == null);
   g.querySelector('.value').firstChild.textContent = v == null ? '–' : v.toFixed(def.digits);
-  const pct = v == null ? 0 : Math.max(0, Math.min(100, ((v - def.min) / (def.max - def.min)) * 100));
-  g.querySelector('.bar i').style.width = `${pct}%`;
+  const now = Date.now();
+  history.add(pid, now, v);
+  lastSample = now;
+  drawSparkline(g.querySelector('.spark'), history.get(pid, now - SPARK_MS), { to: now, windowMs: SPARK_MS, minSpan: minSpan(pid) });
+  if (pid === chartPid) renderChart();
 }
+
+// Smallest y-range a graph shows, so noise doesn't fill the whole height.
+const minSpan = (pid) => (PIDS[pid].max - PIDS[pid].min) * 0.05;
+
+function openChart(pid) {
+  chartPid = pid;
+  for (const g of $('gauges').querySelectorAll('.gauge')) g.setAttribute('aria-pressed', String(Number(g.dataset.pid) === pid));
+  $('chart-panel').hidden = pid == null;
+  if (pid == null) return;
+  $('chart-title').textContent = `${PIDS[pid].name}, ${PIDS[pid].unit}`;
+  renderChart();
+}
+
+function renderChart() {
+  if (chartPid == null || $('chart-panel').hidden) return;
+  const def = PIDS[chartPid];
+  const to = live ? Date.now() : lastSample || Date.now();
+  const points = history.get(chartPid, to - chartWindow);
+  chartState = drawChart($('chart'), points, { to, windowMs: chartWindow, minSpan: minSpan(chartPid), digits: def.digits, unit: def.unit, endLabel: live ? 'now' : 'last reading' });
+  refreshCrosshair();
+  const values = points.map(([, v]) => v);
+  $('chart-stats').textContent = values.length
+    ? `Min ${Math.min(...values).toFixed(def.digits)} · Max ${Math.max(...values).toFixed(def.digits)} · Average ${(values.reduce((a, b) => a + b, 0) / values.length).toFixed(def.digits)} ${def.unit}`
+    : 'Press Start to collect readings.';
+}
+
+const refreshCrosshair = attachCrosshair($('chart'), $('chart-tip'), () => chartState);
+
+for (const b of document.querySelectorAll('.seg button')) {
+  b.addEventListener('click', () => {
+    chartWindow = Number(b.dataset.window);
+    for (const o of document.querySelectorAll('.seg button')) o.setAttribute('aria-pressed', String(o === b));
+    renderChart();
+  });
+}
+$('chart-close').addEventListener('click', () => openChart(null));
+window.addEventListener('resize', () => renderChart());
 
 async function toggleLive() {
   if (live) {
@@ -260,6 +313,7 @@ async function toggleLive() {
   live = false;
   $('btn-live').textContent = 'Start';
   $('rate').textContent = '';
+  renderChart();
   stopRecording(true);
   $('btn-rec').disabled = true;
 }

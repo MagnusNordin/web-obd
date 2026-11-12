@@ -73,6 +73,23 @@
         <button id="btn-rec" type="button" disabled>Record CSV</button>
         <span id="rate" class="hint"></span>
       </div>
+      <p class="hint">Tap a value to see its graph.</p>
+      <div id="chart-panel" class="chart-panel" hidden>
+        <div class="chart-head">
+          <h3 id="chart-title"></h3>
+          <div class="seg" role="group" aria-label="Time window">
+            <button type="button" data-window="60000" aria-pressed="true">1 min</button>
+            <button type="button" data-window="300000" aria-pressed="false">5 min</button>
+            <button type="button" data-window="900000" aria-pressed="false">15 min</button>
+          </div>
+          <button id="chart-close" type="button" class="icon" aria-label="Close graph">✕</button>
+        </div>
+        <div class="chart-box">
+          <svg id="chart" role="img" aria-labelledby="chart-title"></svg>
+          <div id="chart-tip" class="chart-tip" hidden></div>
+        </div>
+        <p id="chart-stats" class="hint chart-stats"></p>
+      </div>
       <div id="gauges" class="gauges"></div>
     </section>
 

@@ -206,3 +206,33 @@ test('filtered Bluetooth search asks only for OBD adapter names and services', a
     assert.deepEqual(bt.lastOptions, { acceptAllDevices: true });
   });
 });
+
+test('graph history keeps 15 minutes, skips missing readings', async () => {
+  const { History } = await import('../site/chart.js');
+  const h = new History(15 * 60000);
+  h.add(0x0c, 0, 800);
+  h.add(0x0c, 1000, null);
+  h.add(0x0c, 2000, NaN);
+  h.add(0x0c, 60000, 900);
+  assert.deepEqual(h.get(0x0c), [[0, 800], [60000, 900]]);
+  h.add(0x0c, 16 * 60000, 1000); // first reading is now older than 15 min
+  assert.deepEqual(h.get(0x0c).map(([, v]) => v), [900, 1000]);
+  assert.deepEqual(h.get(0x0c, 15 * 60000), [[16 * 60000, 1000]]);
+  assert.deepEqual(h.last(0x0c), [16 * 60000, 1000]);
+  h.clear();
+  assert.deepEqual(h.get(0x0c), []);
+});
+
+test('graph axes use round ticks and a minimum span', async () => {
+  const { niceTicks, extent, linePath, windowLabel } = await import('../site/chart.js');
+  assert.deepEqual([30000, 60000, 150000, 300000].map(windowLabel), ['30 s', '1 min', '2.5 min', '5 min']);
+  assert.deepEqual(niceTicks(812, 3390, 4).ticks, [0, 1000, 2000, 3000, 4000]);
+  assert.deepEqual(niceTicks(0.83, 2.41, 4).ticks, [0.5, 1, 1.5, 2, 2.5]);
+  const flat = niceTicks(90, 90);
+  assert.ok(flat.lo < 90 && flat.hi > 90);
+  assert.deepEqual(extent([[0, 90], [1, 90.2]], 8.5), [85.85, 94.35]);
+  assert.deepEqual(extent([[0, 10], [1, 50]], 5), [10, 50]);
+  assert.equal(extent([], 5), null);
+  // A pause of more than 5 s starts a new line segment.
+  assert.equal(linePath([[0, 1], [1000, 2], [9000, 3]], (t) => t / 1000, (v) => v), 'M0.0,1.0L1.0,2.0M9.0,3.0');
+});

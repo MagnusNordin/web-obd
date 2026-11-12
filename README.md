@@ -16,6 +16,9 @@ from about 2004). No app to install: open the page, pair the adapter, read the c
   DPF pressure difference (rises as the filter fills with soot), exhaust
   temperature, AdBlue level, fuel rate, rail pressure, torque and EGR. Record
   to CSV.
+- **Graphs**: every value has a trend line for the last minute; tap one for a
+  larger graph (1, 5 or 15 minutes) with min/max/average and a crosshair that
+  shows the reading at any moment.
 - **Adapter console**: send raw ELM327/OBD commands and see all traffic.
 - **Demo mode**: `?demo` for a simulated petrol car, `?demo=diesel` for a diesel.
 
@@ -46,6 +49,7 @@ dependencies.
 | `site/elm.js` | Bluetooth/serial transports, command queue, OBD client |
 | `site/sim.js` | Simulated petrol and diesel cars for the demo and the tests |
 | `site/dtc-codes.js` | Fault code descriptions |
+| `site/chart.js` | Graph history, axes, sparklines and the crosshair |
 | `site/app.js` | The UI |
 
 ## Deploy

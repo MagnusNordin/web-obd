@@ -318,5 +318,6 @@ $('btn-live').addEventListener('click', toggleLive);
 $('btn-rec').addEventListener('click', toggleRecording);
 $('term').addEventListener('submit', sendRaw);
 checkSupport();
+$('version').textContent = `Version ${document.querySelector('meta[name=version]').content.slice(0, 7)}`;
 const demoParam = new URLSearchParams(location.search).get('demo');
 if (demoParam !== null) connect('demo', demoParam === 'diesel' ? 'diesel' : 'petrol');

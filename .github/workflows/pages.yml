@@ -33,6 +33,15 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      # Cache-busting: every file is loaded as name?v=<commit>, so phones never
+      # mix a new page with old cached scripts. The page also shows the version.
+      - run: |
+          V=${GITHUB_SHA::7}
+          sed -i -E "s#(from '\./[a-z-]+\.js)'#\1?v=$V'#" site/*.js
+          sed -i -E -e "s#(src|href)=\"(app\.(js|css))\"#\1=\"\2?v=$V\"#g" \
+            -e "s#<meta name=\"version\" content=\"dev\">#<meta name=\"version\" content=\"$V\">#" site/index.html
+          grep -q "content=\"$V\"" site/index.html
+          ! grep -nE "from '\./[a-z-]+\.js'" site/*.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with: { path: site }

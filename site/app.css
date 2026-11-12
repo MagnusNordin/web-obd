@@ -93,6 +93,7 @@ select { padding: 6px 8px; min-height: 36px; margin-left: 6px; }
 
 .hint { color: var(--muted); font-size: 0.9rem; margin: 8px 0; }
 .error { color: var(--bad); margin: 10px 0 0; }
+.version { font-size: 0.75rem; margin-bottom: 0; }
 
 .pill {
   font-size: 0.85rem;

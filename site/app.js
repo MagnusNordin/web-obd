@@ -1,6 +1,6 @@
 // UI for the OBD reader: connect, vehicle info, fault codes, readiness, live data.
 
-import { Elm327, ObdClient, connectBluetooth, connectSerial, describeError } from './elm.js';
+import { Elm327, ObdClient, connectBluetooth, connectSerial, describeError, SEARCH_MODES } from './elm.js';
 import { SimTransport } from './sim.js';
 import { PIDS, PID_ORDER, ecuName, decodePid, vinMake } from './obd.js';
 import { describeDtc } from './dtc-codes.js';
@@ -18,8 +18,8 @@ let obd = null;
 let live = false;
 let recording = null;
 let make = null;
-// After a failed device search, the next try lists only OBD adapters.
-let bleFiltered = false;
+// After a failed device search, the next press tries the next way of asking.
+let bleMode = 0;
 const unsupported = new Set();
 
 function setStatus(text, kind = '') {
@@ -56,7 +56,7 @@ async function connect(kind, demo = 'petrol') {
   setBusy(true);
   setStatus('Connecting…', 'busy');
   try {
-    if (kind === 'ble') transport = await connectBluetooth(onLost, step, { filtered: bleFiltered });
+    if (kind === 'ble') transport = await connectBluetooth(onLost, step, { mode: SEARCH_MODES[bleMode] });
     else if (kind === 'serial') transport = await connectSerial(Number($('baud').value), onLost);
     else transport = new SimTransport({ engine: demo });
     step(`Connected to ${transport.name}`);
@@ -75,9 +75,12 @@ async function connect(kind, demo = 'petrol') {
     await readCodes();
   } catch (err) {
     if (err?.name === 'NotFoundError') showError(null); // user closed the device picker
-    else if (kind === 'ble' && !obd && /choosing the device/.test(err?.message) && !bleFiltered) {
-      bleFiltered = true;
-      showError(new Error(`${err.message} Press Bluetooth again to try a search for OBD adapters only.`));
+    else if (kind === 'ble' && /choosing the device/.test(err?.message)) {
+      const tried = bleMode + 1;
+      bleMode = tried % SEARCH_MODES.length;
+      showError(new Error(tried < SEARCH_MODES.length
+        ? `${err.message} Press Bluetooth again to try another way (${tried + 1} of ${SEARCH_MODES.length}).`
+        : `${err.message} All ${SEARCH_MODES.length} ways failed.`));
     } else showError(err);
     await disconnect();
   } finally {

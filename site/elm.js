@@ -14,12 +14,16 @@ const decoder = new TextDecoder();
 
 // BLE serial services used by ELM327 adapters. vLinker uses 18F0; clones
 // often use FFF0 or FFE0. The app picks whichever the adapter exposes.
+// Written out in full: some iOS Bluetooth browsers (Bluefy) reject the short
+// numeric form that the standard allows.
+export const fullUuid = (id) =>
+  typeof id === 'number' ? `0000${id.toString(16).padStart(4, '0')}-0000-1000-8000-00805f9b34fb` : id.toLowerCase();
 const BLE_SERVICES = [
   0x18f0, 0xfff0, 0xffe0, 0xffe5, 0xbeef,
   'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
   '0000ae30-0000-1000-8000-00805f9b34fb',
   '6e400001-b5a3-f393-e0a9-e50e24dcca9e'
-];
+].map(fullUuid);
 
 // Some error values (e.g. from Bluefy on iOS) are bare codes like 2, not Error objects.
 export function describeError(err) {
@@ -39,7 +43,7 @@ async function stage(label, fn) {
   } catch (err) {
     if (isCancel(err) && label === 'choosing the device') throw Object.assign(new Error('Cancelled'), { name: 'NotFoundError' });
     const hint = err === 2 || err === '2'
-      ? ' On iPhone this usually means the browser is not allowed to use Bluetooth: Settings → Privacy & Security → Bluetooth, switch the browser on, then restart it.'
+      ? ' On iPhone, check that the browser may use Bluetooth (Settings → Privacy & Security → Bluetooth).'
       : '';
     throw new Error(`Bluetooth failed while ${label} (${describeError(err)}).${hint}`);
   }
@@ -66,12 +70,19 @@ const ADAPTER_FILTERS = [
   ...BLE_SERVICES.map((uuid) => ({ services: [uuid] }))
 ];
 
-// filtered: false lists all nearby devices; true lists only likely OBD adapters.
-export async function connectBluetooth(onDisconnect, step = () => {}, { filtered = false } = {}) {
-  step(filtered ? 'Choose the adapter (searching for OBD adapters only)' : 'Choose the adapter in the Bluetooth list');
-  const options = filtered
-    ? { filters: ADAPTER_FILTERS, optionalServices: BLE_SERVICES }
-    : { acceptAllDevices: true, optionalServices: BLE_SERVICES };
+// Ways to ask for the device, tried in turn after failures:
+// all devices; only likely OBD adapters; all devices with no service list (bare minimum).
+export const SEARCH_MODES = ['all', 'filtered', 'basic'];
+const SEARCH = {
+  all: { label: 'Choose the adapter in the Bluetooth list', options: { acceptAllDevices: true, optionalServices: BLE_SERVICES } },
+  filtered: { label: 'Choose the adapter (searching for OBD adapters only)', options: { filters: ADAPTER_FILTERS, optionalServices: BLE_SERVICES } },
+  basic: { label: 'Choose the adapter (basic search)', options: { acceptAllDevices: true } }
+};
+
+export async function connectBluetooth(onDisconnect, step = () => {}, { mode = 'all' } = {}) {
+  const search = SEARCH[mode] || SEARCH.all;
+  step(search.label);
+  const options = search.options;
   const device = await stage('choosing the device', () => navigator.bluetooth.requestDevice(options));
   device.addEventListener('gattserverdisconnected', () => onDisconnect?.());
   step(`Connecting to ${device.name || 'the adapter'}`);

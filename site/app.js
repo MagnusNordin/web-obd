@@ -5,6 +5,7 @@ import { SimTransport } from './sim.js';
 import { PIDS, PID_ORDER, ecuName, decodePid, vinMake } from './obd.js';
 import { describeDtc } from './dtc-codes.js';
 import { History, drawSparkline, drawChart, attachCrosshair } from './chart.js';
+import { createDial, dialScales, DIAL_ORDER } from './dials.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => {
@@ -22,6 +23,8 @@ let make = null;
 // After a failed device search, the next press tries the next way of asking.
 let bleMode = 0;
 const history = new History();
+const dials = new Map(); // pid → { element, update }
+let diesel = false;
 const SPARK_MS = 60000;
 let chartPid = null;
 let chartWindow = 60000;
@@ -77,9 +80,9 @@ async function connect(kind, demo = 'petrol') {
     setStatus(transport.name, 'on');
     for (const id of ['vehicle', 'faults', 'readiness', 'live', 'console']) $(id).hidden = false;
     $('btn-disconnect').hidden = false;
-    buildGauges();
     await refreshVehicle();
-    await readCodes();
+    await readCodes(); // also tells diesel from petrol, which sets the rpm dial's scale
+    buildGauges();
   } catch (err) {
     if (err?.name === 'NotFoundError') showError(null); // user closed the device picker
     else if (kind === 'ble' && /choosing the device/.test(err?.message)) {
@@ -105,6 +108,7 @@ async function disconnect() {
   live = false;
   obd = null;
   make = null;
+  diesel = false;
   history.clear();
   openChart(null);
   const t = transport;
@@ -141,6 +145,7 @@ async function readCodes() {
       mil.textContent = status.mil
         ? `Check-engine light ON · ${status.count} code(s) reported`
         : `Check-engine light off · ${status.count} code(s) reported`;
+      diesel = status.diesel;
       renderReadiness(status);
     } else {
       mil.className = 'mil';
@@ -206,7 +211,21 @@ function livePids() {
 }
 
 function buildGauges() {
-  const pids = livePids();
+  const all = livePids();
+  const scales = dialScales({ diesel });
+  const dialPids = DIAL_ORDER.filter((pid) => all.includes(pid));
+  const pids = all.filter((pid) => !dialPids.includes(pid));
+  dials.clear();
+  const main = el('div', 'dials-main');
+  const temps = el('div', 'dials-temp');
+  for (const pid of dialPids) {
+    const dial = createDial(PIDS[pid], scales[pid]);
+    dial.element.dataset.pid = pid;
+    dial.element.addEventListener('click', () => openChart(chartPid === pid ? null : pid));
+    dials.set(pid, dial);
+    (scales[pid].size === 'large' ? main : temps).append(dial.element);
+  }
+  $('dials').replaceChildren(...[main, temps].filter((c) => c.childElementCount));
   $('gauges').replaceChildren(...pids.map((pid) => {
     const def = PIDS[pid];
     const g = el('button', 'gauge stale');
@@ -222,20 +241,22 @@ function buildGauges() {
     g.addEventListener('click', () => openChart(chartPid === pid ? null : pid));
     return g;
   }));
-  if (pids.length === 0) $('gauges').replaceChildren(el('p', 'hint', 'The car reported no live data the app knows.'));
+  if (all.length === 0) $('gauges').replaceChildren(el('p', 'hint', 'The car reported no live data the app knows.'));
 }
 
 function showValue(pid, v) {
+  const now = Date.now();
+  history.add(pid, now, v);
+  lastSample = now;
+  if (pid === chartPid) renderChart();
+  const dial = dials.get(pid);
+  if (dial) { dial.update(v); return; }
   const g = $('gauges').querySelector(`[data-pid="${pid}"]`);
   if (!g) return;
   const def = PIDS[pid];
   g.classList.toggle('stale', v == null);
   g.querySelector('.value').firstChild.textContent = v == null ? '–' : v.toFixed(def.digits);
-  const now = Date.now();
-  history.add(pid, now, v);
-  lastSample = now;
   drawSparkline(g.querySelector('.spark'), history.get(pid, now - SPARK_MS), { to: now, windowMs: SPARK_MS, minSpan: minSpan(pid) });
-  if (pid === chartPid) renderChart();
 }
 
 // Smallest y-range a graph shows, so noise doesn't fill the whole height.
@@ -243,7 +264,7 @@ const minSpan = (pid) => (PIDS[pid].max - PIDS[pid].min) * 0.05;
 
 function openChart(pid) {
   chartPid = pid;
-  for (const g of $('gauges').querySelectorAll('.gauge')) g.setAttribute('aria-pressed', String(Number(g.dataset.pid) === pid));
+  for (const g of $('live').querySelectorAll('[data-pid]')) g.setAttribute('aria-pressed', String(Number(g.dataset.pid) === pid));
   $('chart-panel').hidden = pid == null;
   if (pid == null) return;
   $('chart-title').textContent = `${PIDS[pid].name}, ${PIDS[pid].unit}`;

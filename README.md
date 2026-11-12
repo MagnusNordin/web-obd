@@ -11,6 +11,10 @@ from about 2004). No app to install: open the page, pair the adapter, read the c
   looks at. Diesel cars get the diesel monitor list (DPF and so on).
 - **Vehicle info**: VIN (with the make read from it), protocol, adapter version,
   battery voltage. Fault-code search links include the make.
+- **Dials**: engine speed and vehicle speed as large round dials, temperatures
+  (coolant, oil, intake air, outside air, exhaust) as smaller ones, each with a
+  needle, a warning zone and the digital value. The rev counter's scale follows
+  the engine type (5000 rpm diesel, 7000 rpm petrol).
 - **Live data**: RPM, speed, temperatures, load, throttle, boost, MAF, fuel
   trims and more, whatever the car supports. Diesels also get boost pressure,
   DPF pressure difference (rises as the filter fills with soot), exhaust
@@ -49,6 +53,7 @@ dependencies.
 | `site/elm.js` | Bluetooth/serial transports, command queue, OBD client |
 | `site/sim.js` | Simulated petrol and diesel cars for the demo and the tests |
 | `site/dtc-codes.js` | Fault code descriptions |
+| `site/dials.js` | Round dials: scales, geometry, needle and arc |
 | `site/chart.js` | Graph history, axes, sparklines and the crosshair |
 | `site/app.js` | The UI |
 

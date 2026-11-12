@@ -236,3 +236,19 @@ test('graph axes use round ticks and a minimum span', async () => {
   // A pause of more than 5 s starts a new line segment.
   assert.equal(linePath([[0, 1], [1000, 2], [9000, 3]], (t) => t / 1000, (v) => v), 'M0.0,1.0L1.0,2.0M9.0,3.0');
 });
+
+test('dial geometry: 270° sweep, clamped, scales per engine type', async () => {
+  const { dialAngle, dialFraction, polar, arcPath, dialScales, DIAL_ORDER } = await import('../site/dials.js');
+  const scale = { min: 0, max: 7000 };
+  assert.equal(dialAngle(0, scale), -135);
+  assert.equal(dialAngle(3500, scale), 0);
+  assert.equal(dialAngle(7000, scale), 135);
+  assert.equal(dialFraction(9000, scale), 1);
+  assert.equal(dialFraction(-5, scale), 0);
+  assert.deepEqual(polar(40, 0), [50, 10]);
+  assert.deepEqual(polar(40, 90), [90, 50]);
+  assert.match(arcPath(40, -135, 135), /A40,40 0 1 1 /); // large arc, clockwise
+  assert.equal(dialScales({ diesel: true })[0x0c].max, 5000);
+  assert.equal(dialScales({ diesel: false })[0x0c].max, 7000);
+  for (const pid of DIAL_ORDER) assert.ok(PIDS[pid] && dialScales()[pid], `0x${pid.toString(16)}`);
+});

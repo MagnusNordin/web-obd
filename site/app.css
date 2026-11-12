@@ -157,6 +157,37 @@ select { padding: 6px 8px; min-height: 36px; margin-left: 6px; }
 .gauge .unit { font-size: 0.85rem; color: var(--muted); margin-left: 4px; font-weight: 500; }
 .gauge.stale .value { color: var(--muted); }
 
+.dials { display: grid; gap: 10px; margin-top: 12px; }
+.dials-main { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.dials-temp { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
+.dial {
+  display: flex; flex-direction: column; align-items: center; gap: 0;
+  border: 1px solid var(--line); border-radius: 12px; padding: 8px 6px 10px;
+  background: none; font-weight: 400; min-height: 0; cursor: pointer; width: 100%;
+}
+.dial:hover { border-color: var(--muted); }
+.dial[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.dial-svg { width: 100%; max-width: 260px; aspect-ratio: 100 / 102; display: block; }
+.dial-label { color: var(--muted); font-size: 0.82rem; margin-top: 2px; text-align: center; }
+.dial-track { fill: none; stroke: var(--line); stroke-width: 5; stroke-linecap: round; }
+.dial-fill { fill: none; stroke: var(--accent); stroke-width: 5; stroke-linecap: round; transition: stroke-dasharray 0.3s ease-out; }
+.dial-warn { fill: none; stroke: var(--bad); stroke-width: 1.5; opacity: 0.8; }
+.dial-tick { stroke: var(--muted); stroke-width: 0.6; }
+.dial-tick.major { stroke: var(--text); stroke-width: 1.1; }
+.dial-num { fill: var(--muted); font-size: 6.5px; font-variant-numeric: tabular-nums; }
+.dial.small .dial-num { font-size: 7.5px; }
+.dial-needle { transform-box: view-box; transform-origin: 50px 50px; transition: transform 0.3s ease-out; }
+.dial-needle-line { fill: var(--text); }
+.dial-hub { fill: var(--text); stroke: var(--card); stroke-width: 1.5; }
+.dial-value { fill: var(--text); font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.dial.small .dial-value { font-size: 16px; }
+.dial-unit { fill: var(--muted); font-size: 7px; }
+.dial.small .dial-unit { font-size: 8px; }
+.dial.stale .dial-value { fill: var(--muted); }
+.dial.warn .dial-fill { stroke: var(--bad); }
+.dial.warn .dial-value { fill: var(--bad); }
+@media (prefers-reduced-motion: reduce) { .dial-fill, .dial-needle { transition: none; } }
+
 .chart-panel { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-top: 4px; }
 .chart-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .chart-head h3 { margin: 0; font-size: 1rem; flex: 1; min-width: 140px; }

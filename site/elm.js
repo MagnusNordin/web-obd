@@ -21,22 +21,63 @@ const BLE_SERVICES = [
   '6e400001-b5a3-f393-e0a9-e50e24dcca9e'
 ];
 
-export async function connectBluetooth(onDisconnect) {
-  const device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: BLE_SERVICES });
+// Some error values (e.g. from Bluefy on iOS) are bare codes like 2, not Error objects.
+export function describeError(err) {
+  if (err == null) return 'unknown error';
+  if (typeof err !== 'object') return `code ${err}`;
+  const text = [err.name && err.name !== 'Error' ? err.name : '', err.message || ''].filter(Boolean).join(': ');
+  if (text) return text;
+  try { return JSON.stringify(err); } catch { return String(err); }
+}
+
+const isCancel = (err) => err?.name === 'NotFoundError' || /cancel/i.test(err?.message || '');
+
+// Runs one Bluetooth step and names it in the error, so failures say where they happened.
+async function stage(label, fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    if (isCancel(err) && label === 'choosing the device') throw Object.assign(new Error('Cancelled'), { name: 'NotFoundError' });
+    throw new Error(`Bluetooth failed while ${label} (${describeError(err)}).`);
+  }
+}
+
+// Every service the adapter exposes: all at once where the browser can,
+// otherwise by asking for each known serial service in turn (Bluefy).
+async function findServices(server) {
+  try {
+    const all = await server.getPrimaryServices();
+    if (all.length) return all;
+  } catch { /* fall back below */ }
+  const found = [];
+  for (const uuid of BLE_SERVICES) {
+    try { found.push(await server.getPrimaryService(uuid)); } catch { /* not on this adapter */ }
+  }
+  return found;
+}
+
+export async function connectBluetooth(onDisconnect, step = () => {}) {
+  step('Choose the adapter in the Bluetooth list');
+  const device = await stage('choosing the device', () =>
+    navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: BLE_SERVICES }));
   device.addEventListener('gattserverdisconnected', () => onDisconnect?.());
-  const server = await device.gatt.connect();
-  const services = await server.getPrimaryServices();
+  step(`Connecting to ${device.name || 'the adapter'}`);
+  const server = await stage('connecting to the adapter', () => device.gatt.connect());
+  step('Looking for the serial service');
+  const services = await stage('looking for services', () => findServices(server));
   let write = null;
   let notify = null;
   for (const service of services) {
-    const chars = await service.getCharacteristics();
+    let chars;
+    try { chars = await service.getCharacteristics(); } catch { continue; }
     const w = chars.find((c) => c.properties.write || c.properties.writeWithoutResponse);
     const n = chars.find((c) => c.properties.notify || c.properties.indicate);
     if (w && n) { write = w; notify = n; break; }
   }
   if (!write || !notify) {
     device.gatt.disconnect();
-    throw new Error('This Bluetooth device has no serial service the app recognises. Is it the OBD adapter?');
+    const ids = services.map((sv) => sv.uuid).join(', ') || 'none';
+    throw new Error(`This Bluetooth device has no serial service the app recognises (services found: ${ids}). Is it the OBD adapter?`);
   }
   const transport = {
     name: device.name || 'Bluetooth adapter',
@@ -45,14 +86,14 @@ export async function connectBluetooth(onDisconnect) {
       const bytes = encoder.encode(text);
       for (let i = 0; i < bytes.length; i += 20) {
         const chunk = bytes.slice(i, i + 20);
-        if (write.properties.writeWithoutResponse) await write.writeValueWithoutResponse(chunk);
+        if (write.properties.writeWithoutResponse && write.writeValueWithoutResponse) await write.writeValueWithoutResponse(chunk);
         else await write.writeValue(chunk);
       }
     },
     async close() { if (device.gatt.connected) device.gatt.disconnect(); }
   };
   notify.addEventListener('characteristicvaluechanged', (e) => transport.onData(decoder.decode(e.target.value)));
-  await notify.startNotifications();
+  await stage('starting notifications', () => notify.startNotifications());
   return transport;
 }
 

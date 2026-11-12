@@ -127,3 +127,60 @@ test('diesel demo car: supported ranges up to 0x85, diesel monitors, DPF code, l
 test('every live PID has a place in the tile order, once', () => {
   assert.deepEqual([...PID_ORDER].sort((a, b) => a - b), Object.keys(PIDS).map(Number).sort((a, b) => a - b));
 });
+
+// A fake Web Bluetooth stack: an adapter with one serial service (FFF0).
+function fakeBluetooth({ requestError, listAllFails = false } = {}) {
+  const props = (p) => ({ write: false, writeWithoutResponse: false, notify: false, indicate: false, ...p });
+  const notify = {
+    properties: props({ notify: true }),
+    listeners: [],
+    addEventListener(_, fn) { this.listeners.push(fn); },
+    async startNotifications() {}
+  };
+  const write = {
+    properties: props({ write: true }),
+    async writeValue(bytes) {
+      // Answer every command like an adapter would.
+      const reply = new TextEncoder().encode('OK\r\r>');
+      setTimeout(() => notify.listeners.forEach((fn) => fn({ target: { value: reply } })), 1);
+      return bytes;
+    }
+  };
+  const service = { uuid: '0000fff0-0000-1000-8000-00805f9b34fb', getCharacteristics: async () => [write, notify] };
+  const server = {
+    async getPrimaryServices() { if (listAllFails) throw 2; return [service]; },
+    async getPrimaryService(uuid) { if (uuid === 0xfff0) return service; throw new Error('NotFound'); }
+  };
+  const device = {
+    name: 'vLinker FD', addEventListener() {},
+    gatt: { connected: true, connect: async () => server, disconnect() {} }
+  };
+  return { requestDevice: async () => { if (requestError !== undefined) throw requestError; return device; } };
+}
+
+function withBluetooth(bt, fn) {
+  const before = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  Object.defineProperty(globalThis, 'navigator', { value: { bluetooth: bt }, configurable: true });
+  return fn().finally(() => Object.defineProperty(globalThis, 'navigator', before));
+}
+
+test('Bluetooth errors that are bare codes say which step failed', async () => {
+  const { connectBluetooth, describeError } = await import('../site/elm.js');
+  assert.equal(describeError(2), 'code 2');
+  assert.equal(describeError(new DOMException('Timed out', 'NetworkError')), 'NetworkError: Timed out');
+  await withBluetooth(fakeBluetooth({ requestError: 2 }), () =>
+    assert.rejects(connectBluetooth(), /while choosing the device \(code 2\)/));
+  await withBluetooth(fakeBluetooth({ requestError: new DOMException('User cancelled', 'NotFoundError') }), () =>
+    assert.rejects(connectBluetooth(), (e) => e.name === 'NotFoundError'));
+});
+
+test('Bluetooth finds the serial service one by one when listing all fails (Bluefy)', async () => {
+  const { connectBluetooth } = await import('../site/elm.js');
+  await withBluetooth(fakeBluetooth({ listAllFails: true }), async () => {
+    const steps = [];
+    const t = await connectBluetooth(() => {}, (s) => steps.push(s));
+    assert.equal(t.name, 'vLinker FD');
+    assert.equal(await new Elm327(t).send('ATE0'), 'OK\r\r');
+    assert.deepEqual(steps, ['Choose the adapter in the Bluetooth list', 'Connecting to vLinker FD', 'Looking for the serial service']);
+  });
+});

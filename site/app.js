@@ -1,6 +1,6 @@
 // UI for the OBD reader: connect, vehicle info, fault codes, readiness, live data.
 
-import { Elm327, ObdClient, connectBluetooth, connectSerial } from './elm.js';
+import { Elm327, ObdClient, connectBluetooth, connectSerial, describeError } from './elm.js';
 import { SimTransport } from './sim.js';
 import { PIDS, PID_ORDER, ecuName, decodePid, vinMake } from './obd.js';
 import { describeDtc } from './dtc-codes.js';
@@ -27,7 +27,7 @@ function setStatus(text, kind = '') {
 
 function showError(err) {
   $('error').hidden = !err;
-  $('error').textContent = err ? (err.message || String(err)) : '';
+  $('error').textContent = err ? (err instanceof Error ? err.message : `Error: ${describeError(err)}`) : '';
 }
 
 function log(cmd, raw) {
@@ -54,7 +54,7 @@ async function connect(kind, demo = 'petrol') {
   setBusy(true);
   setStatus('Connecting…', 'busy');
   try {
-    if (kind === 'ble') transport = await connectBluetooth(onLost);
+    if (kind === 'ble') transport = await connectBluetooth(onLost, step);
     else if (kind === 'serial') transport = await connectSerial(Number($('baud').value), onLost);
     else transport = new SimTransport({ engine: demo });
     step(`Connected to ${transport.name}`);

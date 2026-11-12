@@ -18,6 +18,8 @@ let obd = null;
 let live = false;
 let recording = null;
 let make = null;
+// After a failed device search, the next try lists only OBD adapters.
+let bleFiltered = false;
 const unsupported = new Set();
 
 function setStatus(text, kind = '') {
@@ -54,7 +56,7 @@ async function connect(kind, demo = 'petrol') {
   setBusy(true);
   setStatus('Connecting…', 'busy');
   try {
-    if (kind === 'ble') transport = await connectBluetooth(onLost, step);
+    if (kind === 'ble') transport = await connectBluetooth(onLost, step, { filtered: bleFiltered });
     else if (kind === 'serial') transport = await connectSerial(Number($('baud').value), onLost);
     else transport = new SimTransport({ engine: demo });
     step(`Connected to ${transport.name}`);
@@ -73,7 +75,10 @@ async function connect(kind, demo = 'petrol') {
     await readCodes();
   } catch (err) {
     if (err?.name === 'NotFoundError') showError(null); // user closed the device picker
-    else showError(err);
+    else if (kind === 'ble' && !obd && /choosing the device/.test(err?.message) && !bleFiltered) {
+      bleFiltered = true;
+      showError(new Error(`${err.message} Press Bluetooth again to try a search for OBD adapters only.`));
+    } else showError(err);
     await disconnect();
   } finally {
     setBusy(false);

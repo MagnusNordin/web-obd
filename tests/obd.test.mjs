@@ -155,7 +155,10 @@ function fakeBluetooth({ requestError, listAllFails = false } = {}) {
     name: 'vLinker FD', addEventListener() {},
     gatt: { connected: true, connect: async () => server, disconnect() {} }
   };
-  return { requestDevice: async () => { if (requestError !== undefined) throw requestError; return device; } };
+  return {
+    lastOptions: null,
+    async requestDevice(options) { this.lastOptions = options; if (requestError !== undefined) throw requestError; return device; }
+  };
 }
 
 function withBluetooth(bt, fn) {
@@ -169,7 +172,7 @@ test('Bluetooth errors that are bare codes say which step failed', async () => {
   assert.equal(describeError(2), 'code 2');
   assert.equal(describeError(new DOMException('Timed out', 'NetworkError')), 'NetworkError: Timed out');
   await withBluetooth(fakeBluetooth({ requestError: 2 }), () =>
-    assert.rejects(connectBluetooth(), /while choosing the device \(code 2\)/));
+    assert.rejects(connectBluetooth(), /while choosing the device \(code 2\)\. On iPhone .*Privacy/));
   await withBluetooth(fakeBluetooth({ requestError: new DOMException('User cancelled', 'NotFoundError') }), () =>
     assert.rejects(connectBluetooth(), (e) => e.name === 'NotFoundError'));
 });
@@ -182,5 +185,18 @@ test('Bluetooth finds the serial service one by one when listing all fails (Blue
     assert.equal(t.name, 'vLinker FD');
     assert.equal(await new Elm327(t).send('ATE0'), 'OK\r\r');
     assert.deepEqual(steps, ['Choose the adapter in the Bluetooth list', 'Connecting to vLinker FD', 'Looking for the serial service']);
+  });
+});
+
+test('filtered Bluetooth search asks only for OBD adapter names and services', async () => {
+  const { connectBluetooth } = await import('../site/elm.js');
+  const bt = fakeBluetooth();
+  await withBluetooth(bt, async () => {
+    await connectBluetooth(() => {}, () => {}, { filtered: true });
+    assert.equal(bt.lastOptions.acceptAllDevices, undefined);
+    assert.ok(bt.lastOptions.filters.some((f) => f.namePrefix === 'vLinker'));
+    assert.ok(bt.lastOptions.filters.some((f) => f.services?.[0] === 0x18f0));
+    await connectBluetooth();
+    assert.equal(bt.lastOptions.acceptAllDevices, true);
   });
 });

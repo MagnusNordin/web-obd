@@ -38,7 +38,10 @@ async function stage(label, fn) {
     return await fn();
   } catch (err) {
     if (isCancel(err) && label === 'choosing the device') throw Object.assign(new Error('Cancelled'), { name: 'NotFoundError' });
-    throw new Error(`Bluetooth failed while ${label} (${describeError(err)}).`);
+    const hint = err === 2 || err === '2'
+      ? ' On iPhone this usually means the browser is not allowed to use Bluetooth: Settings → Privacy & Security → Bluetooth, switch the browser on, then restart it.'
+      : '';
+    throw new Error(`Bluetooth failed while ${label} (${describeError(err)}).${hint}`);
   }
 }
 
@@ -56,10 +59,20 @@ async function findServices(server) {
   return found;
 }
 
-export async function connectBluetooth(onDisconnect, step = () => {}) {
-  step('Choose the adapter in the Bluetooth list');
-  const device = await stage('choosing the device', () =>
-    navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: BLE_SERVICES }));
+// For browsers that can't list every device: only OBD adapter names and services.
+const ADAPTER_FILTERS = [
+  ...['vLinker', 'VLINKER', 'Vlinker', 'V-LINK', 'IOS-Vlink', 'Android-Vlink', 'OBD', 'Obd', 'obd', 'ELM', 'OBDLink', 'Viecar', 'KONNWEI', 'Veepeak', 'VEEPEAK']
+    .map((namePrefix) => ({ namePrefix })),
+  ...BLE_SERVICES.map((uuid) => ({ services: [uuid] }))
+];
+
+// filtered: false lists all nearby devices; true lists only likely OBD adapters.
+export async function connectBluetooth(onDisconnect, step = () => {}, { filtered = false } = {}) {
+  step(filtered ? 'Choose the adapter (searching for OBD adapters only)' : 'Choose the adapter in the Bluetooth list');
+  const options = filtered
+    ? { filters: ADAPTER_FILTERS, optionalServices: BLE_SERVICES }
+    : { acceptAllDevices: true, optionalServices: BLE_SERVICES };
+  const device = await stage('choosing the device', () => navigator.bluetooth.requestDevice(options));
   device.addEventListener('gattserverdisconnected', () => onDisconnect?.());
   step(`Connecting to ${device.name || 'the adapter'}`);
   const server = await stage('connecting to the adapter', () => device.gatt.connect());
